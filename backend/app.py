@@ -62,6 +62,10 @@ def create_app():
     def home():
         return {"status": "success", "message": "Flask Backend is working perfectly on Render!"}
 
+    @app.route('/health')
+    def health():
+        return {"status": "ok"}
+
     return app
 
     

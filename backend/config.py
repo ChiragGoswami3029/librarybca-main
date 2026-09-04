@@ -20,8 +20,8 @@ class Config:
     # 👇 YAHAN IS LINE KO ADD KAREIN
     SEMESTERS = ["1", "2", "3", "4", "5", "6"]
 
-    # Secret key used to sign login tokens (JWT). Change this before deploying!
-    JWT_SECRET_KEY = "change-this-to-a-random-secret-string"
+    # Secret key used to sign login tokens (JWT).
+    JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "change-this-to-a-random-secret-string")
 
     JWT_ACCESS_TOKEN_EXPIRES = False # stay logged in until you log out
 
