@@ -52,7 +52,7 @@ class FileItem(db.Model):
             "original_name": self.original_name,
             "uploader": self.uploader.name,  # type: ignore
             "uploader_id": self.uploader_id,
-            "upload_date": self.upload_date.isoformat()  ,
+            "upload_date": self.upload_date.isoformat() if self.upload_date else None,
             "comment_count": len(self.comments)  # type: ignore[reportArgumentType]
         }
 
