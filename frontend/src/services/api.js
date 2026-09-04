@@ -1,6 +1,9 @@
 // Centralized API Client for AcademicShare
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
+const API_BASE_URL = configuredApiBaseUrl || (
+  import.meta.env.DEV ? 'http://localhost:5000' : 'https://academicshare-backend.onrender.com'
+);
 
 export class ApiError extends Error {
   constructor(message, status, data = null) {
