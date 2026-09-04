@@ -64,9 +64,6 @@ export default function FileRow({
     setIsMenuOpen(false);
   };
 
-  // Semi-deterministic realistic visual stats if backend doesn't track download counts
-  const downloadCount = 10 + ((file.id * 17) % 80);
-
   return (
     <div
       className="glass-card-interactive"
@@ -124,7 +121,7 @@ export default function FileRow({
         </div>
       </div>
 
-      {/* Right Controls: Downloads, Comments, More Options */}
+      {/* Right Controls: Download, Comments, More Options */}
       <div
         style={{
           display: 'flex',
@@ -134,7 +131,7 @@ export default function FileRow({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Direct Download with count */}
+        {/* Direct Download */}
         <a
           href={getDownloadUrl(file.id)}
           download={file.original_name}
@@ -151,7 +148,6 @@ export default function FileRow({
           title="Download file"
         >
           <Download size={15} />
-          <span>{downloadCount}</span>
         </a>
 
         {/* Comments Link with count */}
