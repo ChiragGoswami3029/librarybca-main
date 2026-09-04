@@ -2,6 +2,7 @@ import os
 import uuid
 import cloudinary
 import cloudinary.uploader
+from urllib.parse import urlsplit, urlunsplit
 from flask import Blueprint, request, jsonify, send_from_directory, current_app, redirect
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.utils import secure_filename
@@ -13,6 +14,21 @@ files_bp = Blueprint("files", __name__)
 def allowed_file(filename):
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     return ext in current_app.config["ALLOWED_EXTENSIONS"]
+
+
+def cloudinary_delivery_url(record):
+    """Return a delivery URL with the resource type used for this file."""
+    url = record.filename
+    if not url.startswith("http"):
+        return url
+
+    ext = os.path.splitext(record.original_name or "")[1].lower()
+    if ext not in {".pdf", ".doc", ".docx", ".ppt", ".pptx", ".zip", ".txt"}:
+        return url
+
+    parsed = urlsplit(url)
+    path = parsed.path.replace("/image/upload/", "/raw/upload/", 1)
+    return urlunsplit((parsed.scheme, parsed.netloc, path, parsed.query, parsed.fragment))
 
 
 def notify_followers(file_record):
@@ -136,7 +152,7 @@ def download_file(file_id):
     
     # Agar Cloudinary URL hai toh browser ko direct wahan redirect karein
     if record.filename.startswith("http"):
-        return redirect(record.filename)
+        return redirect(cloudinary_delivery_url(record))
         
     return send_from_directory(
         current_app.config["UPLOAD_FOLDER"],
@@ -152,7 +168,7 @@ def view_file(file_id):
     
     # Agar Cloudinary URL hai toh direct view link redirect karein
     if record.filename.startswith("http"):
-        return redirect(record.filename)
+        return redirect(cloudinary_delivery_url(record))
         
     return send_from_directory(
         current_app.config["UPLOAD_FOLDER"],
