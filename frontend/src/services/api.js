@@ -1,9 +1,11 @@
 // Centralized API Client for AcademicShare
 
 const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
-const API_BASE_URL = configuredApiBaseUrl || (
-  import.meta.env.DEV ? 'http://localhost:5000' : 'https://academicshare-backend.onrender.com'
-);
+const API_BASE_URL = (configuredApiBaseUrl || (import.meta.env.DEV ? 'http://localhost:5000' : '')).replace(/\/+$/, '');
+
+if (!API_BASE_URL) {
+  throw new Error('VITE_API_BASE_URL must be configured before starting the production frontend.');
+}
 
 export class ApiError extends Error {
   constructor(message, status, data = null) {
@@ -15,7 +17,9 @@ export class ApiError extends Error {
 }
 
 export async function apiRequest(endpoint, options = {}) {
-  const url = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint}`;
+  const url = endpoint.startsWith('http')
+    ? endpoint
+    : `${API_BASE_URL}/${endpoint.replace(/^\/+/, '')}`;
 
   const headers = new Headers(options.headers || {});
 
