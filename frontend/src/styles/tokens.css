@@ -1,0 +1,154 @@
+/* Design Tokens for AcademicShare */
+:root {
+  /* Common Palette */
+  --accent-primary: #8C5535;
+  --accent-hover: #9E6340;
+  --accent-active: #7A472A;
+  --accent-subtle: rgba(140, 85, 53, 0.12);
+  --accent-glow: rgba(140, 85, 53, 0.28);
+
+  --color-success: #2e7d32;
+  --color-success-bg: rgba(46, 125, 50, 0.12);
+  --color-warning: #ed6c02;
+  --color-warning-bg: rgba(237, 108, 2, 0.12);
+  --color-danger: #d32f2f;
+  --color-danger-bg: rgba(211, 47, 47, 0.12);
+
+  /* File Type Badge Colors */
+  --file-pdf-bg: #fee2e2;
+  --file-pdf-text: #dc2626;
+  --file-docx-bg: #dbeafe;
+  --file-docx-text: #2563eb;
+  --file-pptx-bg: #dcfce7;
+  --file-pptx-text: #16a34a;
+  --file-orange-bg: #ffedd5;
+  --file-orange-text: #ea580c;
+
+  /* Typography */
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Layout dimensions */
+  --sidebar-width: 250px;
+  --right-rail-width: 320px;
+  --topbar-height: 72px;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 26px;
+  --radius-full: 9999px;
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 240ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Light Theme (Approved Reference: Warm sand/cream background + dark espresso glass sidebar) */
+:root,
+[data-theme="light"] {
+  --bg-main: #ECE7E1;
+  --bg-gradient: radial-gradient(circle at 12% 14%, rgba(235, 215, 195, 0.45) 0%, transparent 45%),
+                 radial-gradient(circle at 88% 85%, rgba(225, 210, 190, 0.35) 0%, transparent 50%),
+                 #ECE7E1;
+
+  --sidebar-bg: #1E1815;
+  --sidebar-border: rgba(255, 255, 255, 0.07);
+  --sidebar-text: #E8E0D9;
+  --sidebar-text-muted: #9E928A;
+  --sidebar-nav-active-bg: linear-gradient(135deg, #8C5535 0%, #A26842 100%);
+  --sidebar-nav-active-border: rgba(235, 175, 130, 0.35);
+  --sidebar-nav-active-text: #FFFFFF;
+  --sidebar-promo-bg: rgba(45, 34, 28, 0.75);
+  --sidebar-promo-border: rgba(255, 255, 255, 0.08);
+
+  --surface-ground: #ECE7E1;
+  --surface-glass-subtle: rgba(255, 255, 255, 0.45);
+  --surface-glass: rgba(255, 255, 255, 0.65);
+  --surface-glass-strong: rgba(255, 255, 255, 0.88);
+  --surface-card: rgba(255, 255, 255, 0.68);
+  --surface-card-hover: rgba(255, 255, 255, 0.92);
+  --surface-modal: rgba(255, 255, 255, 0.95);
+
+  --border-glass: rgba(255, 255, 255, 0.75);
+  --border-glass-subtle: rgba(0, 0, 0, 0.05);
+  --border-glass-strong: rgba(255, 255, 255, 0.95);
+
+  --text-primary: #1C1815;
+  --text-secondary: #635850;
+  --text-muted: #8E8278;
+  --text-inverse: #FFFFFF;
+
+  --input-bg: rgba(255, 255, 255, 0.75);
+  --input-border: rgba(0, 0, 0, 0.07);
+  --input-focus-border: #8C5535;
+
+  --shadow-glass: 0 10px 30px -5px rgba(60, 40, 25, 0.06);
+  --shadow-glass-sm: 0 4px 14px 0 rgba(60, 40, 25, 0.04);
+  --shadow-glow: 0 0 24px rgba(140, 85, 53, 0.18);
+
+  --skeleton-base: rgba(215, 205, 195, 0.6);
+  --skeleton-highlight: rgba(255, 255, 255, 0.7);
+
+  --auth-brand-bg: linear-gradient(135deg, #1E1815 0%, #2D231E 100%);
+  --auth-hero-text: #FFFFFF;
+  --auth-hero-text-secondary: #D8CECA;
+  --auth-hero-text-muted: #9E928A;
+}
+
+/* Dark Theme (#011420 primary background with #669BBC accent) */
+[data-theme="dark"] {
+  --accent-primary: #669BBC;
+  --accent-hover: #7EADC9;
+  --accent-active: #5388A7;
+  --accent-subtle: rgba(102, 155, 188, 0.16);
+  --accent-glow: rgba(102, 155, 188, 0.35);
+
+  --bg-main: #011420;
+  --bg-gradient: radial-gradient(circle at 15% 20%, rgba(102, 155, 188, 0.09) 0%, transparent 45%),
+                 radial-gradient(circle at 85% 70%, rgba(10, 47, 74, 0.55) 0%, transparent 50%),
+                 #011420;
+
+  --sidebar-bg: #01121D;
+  --sidebar-border: rgba(102, 155, 188, 0.16);
+  --sidebar-text: #F0F6FC;
+  --sidebar-text-muted: #829DB2;
+  --sidebar-nav-active-bg: linear-gradient(135deg, rgba(102, 155, 188, 0.28) 0%, rgba(10, 48, 77, 0.7) 100%);
+  --sidebar-nav-active-border: rgba(102, 155, 188, 0.5);
+  --sidebar-nav-active-text: #F0F6FC;
+  --sidebar-promo-bg: rgba(6, 38, 62, 0.75);
+  --sidebar-promo-border: rgba(102, 155, 188, 0.2);
+
+  --surface-ground: #011420;
+  --surface-glass-subtle: rgba(4, 30, 48, 0.45);
+  --surface-glass: rgba(6, 38, 62, 0.65);
+  --surface-glass-strong: rgba(10, 48, 77, 0.85);
+  --surface-card: rgba(8, 41, 66, 0.62);
+  --surface-card-hover: rgba(13, 54, 86, 0.8);
+  --surface-modal: rgba(4, 25, 42, 0.96);
+
+  --border-glass: rgba(102, 155, 188, 0.18);
+  --border-glass-subtle: rgba(102, 155, 188, 0.09);
+  --border-glass-strong: rgba(102, 155, 188, 0.38);
+
+  --text-primary: #F0F6FC;
+  --text-secondary: #9CB5C7;
+  --text-muted: #627E94;
+  --text-inverse: #011420;
+
+  --input-bg: rgba(2, 22, 36, 0.75);
+  --input-border: rgba(102, 155, 188, 0.22);
+  --input-focus-border: #669BBC;
+
+  --shadow-glass: 0 10px 32px 0 rgba(0, 0, 0, 0.4);
+  --shadow-glass-sm: 0 4px 16px 0 rgba(0, 0, 0, 0.28);
+  --shadow-glow: 0 0 24px rgba(102, 155, 188, 0.24);
+
+  --skeleton-base: rgba(10, 48, 77, 0.6);
+  --skeleton-highlight: rgba(102, 155, 188, 0.18);
+
+  --auth-brand-bg: linear-gradient(135deg, rgba(6, 38, 62, 0.95) 0%, rgba(1, 20, 32, 0.95) 100%);
+  --auth-hero-text: #F0F6FC;
+  --auth-hero-text-secondary: #9CB5C7;
+  --auth-hero-text-muted: #627E94;
+}
