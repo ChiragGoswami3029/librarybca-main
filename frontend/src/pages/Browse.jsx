@@ -8,6 +8,8 @@ import Dropdown from '../components/common/Dropdown';
 import Button from '../components/common/Button';
 import { useDebounce } from '../hooks/useDebounce';
 import { useAuth } from '../context/AuthContext';
+import DeleteFileModal from '../components/files/DeleteFileModal';
+import { useFileDeletion } from '../hooks/useFileDeletion';
 
 export default function Browse() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -38,6 +40,16 @@ export default function Browse() {
   const [files, setFiles] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const {
+    deletingFile,
+    isDeleting,
+    deleteError,
+    handleOpenDelete,
+    handleConfirmDelete,
+    closeDelete,
+  } = useFileDeletion((deletedFile) => {
+    setFiles((prev) => prev.filter((file) => file.id !== deletedFile.id));
+  });
 
   // Debounced search query
   const debouncedSearch = useDebounce(searchQuery, 350);
@@ -326,8 +338,17 @@ export default function Browse() {
           emptyDescription="Try clearing some filters or searching for a different term."
           currentUserId={user?.id}
           isAdmin={Boolean(user?.is_admin)}
+          onDelete={handleOpenDelete}
         />
       </div>
+
+      <DeleteFileModal
+        deletingFile={deletingFile}
+        isDeleting={isDeleting}
+        deleteError={deleteError}
+        onClose={closeDelete}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   );
 }

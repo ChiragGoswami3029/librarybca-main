@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { getFiles } from '../../services/filesApi';
 import FileList from '../files/FileList';
 import { useAuth } from '../../context/AuthContext';
+import DeleteFileModal from '../files/DeleteFileModal';
+import { useFileDeletion } from '../../hooks/useFileDeletion';
 
 export default function RecentUploads({
   semester = '',
@@ -14,6 +16,16 @@ export default function RecentUploads({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const { user } = useAuth();
+  const {
+    deletingFile,
+    isDeleting,
+    deleteError,
+    handleOpenDelete,
+    handleConfirmDelete,
+    closeDelete,
+  } = useFileDeletion((deletedFile) => {
+    setFiles((prev) => prev.filter((file) => file.id !== deletedFile.id));
+  });
 
   const loadRecentFiles = async () => {
     setIsLoading(true);
@@ -83,6 +95,14 @@ export default function RecentUploads({
         emptyDescription="Be the first to share notes or assignments for this semester!"
         currentUserId={user?.id}
         isAdmin={Boolean(user?.is_admin)}
+        onDelete={handleOpenDelete}
+      />
+      <DeleteFileModal
+        deletingFile={deletingFile}
+        isDeleting={isDeleting}
+        deleteError={deleteError}
+        onClose={closeDelete}
+        onConfirm={handleConfirmDelete}
       />
     </section>
   );

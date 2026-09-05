@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FolderHeart, Plus, AlertCircle, Trash2 } from 'lucide-react';
-import { getMyFiles, updateFile, deleteFile } from '../services/filesApi';
+import { FolderHeart, Plus, AlertCircle } from 'lucide-react';
+import { getMyFiles, updateFile } from '../services/filesApi';
 import { getMeta } from '../services/metaApi';
 import FileRow from '../components/files/FileRow';
 import Modal from '../components/common/Modal';
@@ -10,6 +10,8 @@ import Button from '../components/common/Button';
 import Skeleton from '../components/common/Skeleton';
 import EmptyState from '../components/common/EmptyState';
 import ErrorState from '../components/common/ErrorState';
+import DeleteFileModal from '../components/files/DeleteFileModal';
+import { useFileDeletion } from '../hooks/useFileDeletion';
 
 export default function MyUploads() {
   const navigate = useNavigate();
@@ -34,10 +36,16 @@ export default function MyUploads() {
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [editError, setEditError] = useState('');
 
-  // Delete Modal State
-  const [deletingFile, setDeletingFile] = useState(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState('');
+  const {
+    deletingFile,
+    isDeleting,
+    deleteError,
+    handleOpenDelete,
+    handleConfirmDelete,
+    closeDelete,
+  } = useFileDeletion((deletedFile) => {
+    setFiles((prev) => prev.filter((file) => file.id !== deletedFile.id));
+  });
 
   const loadMyUploads = async () => {
     setIsLoading(true);
@@ -102,29 +110,6 @@ export default function MyUploads() {
       setEditError(err.message || 'Failed to update file.');
     } finally {
       setIsSavingEdit(false);
-    }
-  };
-
-  // Open Delete Modal
-  const handleOpenDelete = (file) => {
-    setDeletingFile(file);
-    setDeleteError('');
-  };
-
-  // Confirm Delete
-  const handleConfirmDelete = async () => {
-    if (!deletingFile) return;
-
-    setIsDeleting(true);
-    setDeleteError('');
-    try {
-      await deleteFile(deletingFile.id);
-      setFiles((prev) => prev.filter((f) => f.id !== deletingFile.id));
-      setDeletingFile(null);
-    } catch (err) {
-      setDeleteError(err.message || 'Failed to delete file. Please try again.');
-    } finally {
-      setIsDeleting(false);
     }
   };
 
@@ -272,53 +257,13 @@ export default function MyUploads() {
       )}
 
       {/* Delete Confirmation Modal */}
-      {deletingFile && (
-        <Modal
-          isOpen={Boolean(deletingFile)}
-          onClose={() => setDeletingFile(null)}
-          title="Delete Resource"
-          maxWidth="440px"
-          footer={
-            <>
-              <Button variant="ghost" size="sm" onClick={() => setDeletingFile(null)} disabled={isDeleting}>
-                Cancel
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                isLoading={isDeleting}
-                onClick={handleConfirmDelete}
-                icon={Trash2}
-              >
-                Delete File
-              </Button>
-            </>
-          }
-        >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {deleteError && (
-              <div
-                role="alert"
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'var(--color-danger-bg)',
-                  color: 'var(--color-danger)',
-                  fontSize: '0.8rem',
-                }}
-              >
-                {deleteError}
-              </div>
-            )}
-            <p style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>
-              Are you sure you want to permanently delete <strong>"{deletingFile.title}"</strong>?
-            </p>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-              This will remove the file from storage and cascade-delete all associated comments. This action cannot be undone.
-            </p>
-          </div>
-        </Modal>
-      )}
+      <DeleteFileModal
+        deletingFile={deletingFile}
+        isDeleting={isDeleting}
+        deleteError={deleteError}
+        onClose={closeDelete}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   );
 }
