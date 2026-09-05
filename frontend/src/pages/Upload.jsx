@@ -16,6 +16,7 @@ import Dropdown from '../components/common/Dropdown';
 import Button from '../components/common/Button';
 
 const ALLOWED_EXTENSIONS = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'png', 'jpg', 'jpeg', 'zip', 'txt'];
+const MAX_FILE_SIZE = 25 * 1024 * 1024;
 const ADD_NEW_SUBJECT = '+ Add new subject';
 
 export default function Upload() {
@@ -69,6 +70,10 @@ export default function Upload() {
       setErrorMessage(
         `Invalid file format (.${ext}). Supported formats: ${ALLOWED_EXTENSIONS.join(', ')}`
       );
+      return;
+    }
+    if (selectedFile.size > MAX_FILE_SIZE) {
+      setErrorMessage('File size cannot exceed 25 MB.');
       return;
     }
 
@@ -141,16 +146,15 @@ export default function Upload() {
       return;
     }
 
-    const formData = new FormData();
-    formData.append('title', title.trim());
-    formData.append('category', category);
-    formData.append('subject', finalSubject);
-    formData.append('semester', semester);
-    formData.append('file', file);
-
     setIsUploading(true);
     try {
-      const res = await uploadFile(formData);
+      const res = await uploadFile({
+        file,
+        title: title.trim(),
+        category,
+        subject: finalSubject,
+        semester,
+      });
       setSuccessMessage('File uploaded successfully! Redirecting...');
       setTimeout(() => {
         if (res?.file?.id) {

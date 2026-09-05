@@ -35,6 +35,7 @@ class Config:
 
     # Only these file types can be uploaded (safety)
     ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "ppt", "pptx", "png", "jpg", "jpeg", "zip", "txt"}
+    MAX_UPLOAD_SIZE = 25 * 1024 * 1024
 
     CATEGORIES = ["Notes", "Assignments", "Important Questions", "Previous Year Papers"]
 

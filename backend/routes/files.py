@@ -1,8 +1,11 @@
 import os
 import uuid
 import logging
+import time
 import cloudinary
 import cloudinary.uploader
+import cloudinary.utils
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from urllib.parse import unquote, urlsplit, urlunsplit
 from flask import Blueprint, request, jsonify, send_from_directory, current_app, redirect
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -11,6 +14,16 @@ from models import db, FileItem, Notification, Follow
 
 files_bp = Blueprint("files", __name__)
 logger = logging.getLogger(__name__)
+RAW_EXTENSIONS = {".pdf", ".doc", ".docx", ".ppt", ".pptx", ".zip", ".txt"}
+
+
+def upload_token_serializer():
+    return URLSafeTimedSerializer(current_app.config["JWT_SECRET_KEY"], salt="cloudinary-upload")
+
+
+def cloudinary_upload_url(resource_type):
+    cloud_name = cloudinary.config().cloud_name
+    return f"https://api.cloudinary.com/v1_1/{cloud_name}/{resource_type}/upload"
 
 
 def allowed_file(filename):
@@ -84,6 +97,24 @@ def delete_cloudinary_asset(record):
             )
 
 
+def cleanup_cloudinary_upload(public_id, resource_type):
+    try:
+        result = cloudinary.uploader.destroy(public_id, resource_type=resource_type)
+        if result.get("result") not in {"ok", "not found"}:
+            logger.warning(
+                "Cloudinary cleanup returned %s for upload %s using resource type %s",
+                result.get("result"),
+                public_id,
+                resource_type,
+            )
+    except Exception:
+        logger.warning("Cloudinary cleanup failed for upload %s", public_id, exc_info=True)
+
+
+def cloudinary_public_id_exists(public_id):
+    return FileItem.query.filter(FileItem.filename.like(f"%/{public_id}")).first() is not None
+
+
 def notify_followers(file_record):
     # Alert every user following this subject that a new file landed
     followers = Follow.query.filter_by(subject=file_record.subject).all()
@@ -99,6 +130,158 @@ def notify_followers(file_record):
     db.session.commit()   
 
 
+@files_bp.route("/upload/signature", methods=["POST"])
+@jwt_required()
+def create_upload_signature():
+    data = request.get_json(silent=True) or {}
+    original_name = secure_filename((data.get("filename") or "").strip())
+    file_size = data.get("size")
+
+    if not original_name or not allowed_file(original_name):
+        return jsonify({"error": "Invalid or missing file type"}), 400
+    if not isinstance(file_size, int) or file_size <= 0:
+        return jsonify({"error": "A valid file size is required"}), 400
+    if file_size > current_app.config["MAX_UPLOAD_SIZE"]:
+        return jsonify({"error": "File exceeds the maximum allowed size"}), 413
+
+    ext = os.path.splitext(original_name)[1].lower()
+    resource_type = "raw" if ext in RAW_EXTENSIONS else "image"
+    public_id = f"{uuid.uuid4().hex}{ext if resource_type == 'raw' else ''}"
+    timestamp = int(time.time())
+    params_to_sign = {"public_id": public_id, "timestamp": timestamp}
+    signature = cloudinary.utils.api_sign_request(
+        params_to_sign,
+        cloudinary.config().api_secret,
+    )
+    upload_token = upload_token_serializer().dumps({
+        "user_id": int(get_jwt_identity()),
+        "public_id": public_id,
+        "resource_type": resource_type,
+        "original_name": original_name,
+    })
+
+    return jsonify({
+        "api_key": cloudinary.config().api_key,
+        "cloud_name": cloudinary.config().cloud_name,
+        "resource_type": resource_type,
+        "public_id": public_id,
+        "timestamp": timestamp,
+        "signature": signature,
+        "upload_token": upload_token,
+        "upload_url": cloudinary_upload_url(resource_type),
+        "max_file_size": current_app.config["MAX_UPLOAD_SIZE"],
+    }), 200
+
+
+@files_bp.route("/upload/metadata", methods=["POST"])
+@jwt_required()
+def finalize_direct_upload():
+    data = request.get_json(silent=True) or {}
+    upload_result = data.get("cloudinary") or {}
+    upload_token = data.get("upload_token")
+    user_id = int(get_jwt_identity())
+
+    try:
+        if not isinstance(upload_token, str):
+            raise BadSignature("missing upload token")
+        token_data = upload_token_serializer().loads(upload_token, max_age=900)
+    except (BadSignature, SignatureExpired, TypeError):
+        return jsonify({"error": "Invalid or expired upload authorization"}), 400
+
+    if token_data.get("user_id") != user_id:
+        return jsonify({"error": "Upload authorization does not belong to this user"}), 403
+
+    public_id = upload_result.get("public_id")
+    version = upload_result.get("version")
+    response_signature = upload_result.get("signature")
+    resource_type = upload_result.get("resource_type")
+    secure_url = upload_result.get("secure_url")
+    byte_count = upload_result.get("bytes")
+    original_name = secure_filename((data.get("original_name") or "").strip())
+
+    authorized_asset = (
+        public_id == token_data.get("public_id")
+        and resource_type == token_data.get("resource_type")
+    )
+    try:
+        if (
+            not authorized_asset
+            or original_name != token_data.get("original_name")
+            or not isinstance(version, int)
+            or not response_signature
+            or not cloudinary.utils.verify_api_response_signature(public_id, version, response_signature)
+        ):
+            raise ValueError("Invalid Cloudinary upload result")
+
+        if not isinstance(byte_count, int) or byte_count <= 0 or byte_count > current_app.config["MAX_UPLOAD_SIZE"]:
+            raise ValueError("Uploaded file exceeds the maximum allowed size")
+        if not isinstance(secure_url, str):
+            raise ValueError("Invalid Cloudinary URL")
+        parsed_url = urlsplit(secure_url)
+        expected_path_prefix = (
+            f"/{cloudinary.config().cloud_name}/{resource_type}/upload/"
+        )
+        public_id_path = parsed_url.path[len(expected_path_prefix):]
+        if not (
+            parsed_url.scheme == "https"
+            and parsed_url.netloc == "res.cloudinary.com"
+            and parsed_url.path.startswith(expected_path_prefix)
+            and public_id_path.rsplit("/", 1)[-1] == public_id
+        ):
+            raise ValueError("Invalid Cloudinary URL")
+    except Exception as error:
+        expected_public_id = token_data.get("public_id")
+        expected_resource_type = token_data.get("resource_type")
+        if (
+            isinstance(expected_public_id, str)
+            and expected_resource_type in {"image", "raw"}
+            and not cloudinary_public_id_exists(expected_public_id)
+        ):
+            cleanup_cloudinary_upload(expected_public_id, expected_resource_type)
+        status_code = 413 if str(error) == "Uploaded file exceeds the maximum allowed size" else 400
+        return jsonify({"error": str(error)}), status_code
+
+    if cloudinary_public_id_exists(public_id):
+        return jsonify({"error": "Upload authorization has already been finalized"}), 409
+
+    title = (data.get("title") or "").strip()
+    category = data.get("category")
+    subject = (data.get("subject") or "").strip()
+    semester = data.get("semester")
+    if not title or not category or not subject or not semester:
+        if not cloudinary_public_id_exists(public_id):
+            cleanup_cloudinary_upload(public_id, resource_type)
+        return jsonify({"error": "title, category, subject and semester are required"}), 400
+    if category not in current_app.config["CATEGORIES"]:
+        if not cloudinary_public_id_exists(public_id):
+            cleanup_cloudinary_upload(public_id, resource_type)
+        return jsonify({"error": f"category must be one of {current_app.config['CATEGORIES']}"}), 400
+
+    record = FileItem(
+        title=title,  # type: ignore
+        category=category,  # type: ignore
+        subject=subject,  # type: ignore
+        semester=semester,  # type: ignore
+        filename=secure_url,  # type: ignore
+        original_name=original_name,  # type: ignore
+        uploader_id=user_id,  # type: ignore
+    )
+    try:
+        db.session.add(record)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        cleanup_cloudinary_upload(public_id, resource_type)
+        return jsonify({"error": "Unable to save uploaded file metadata"}), 500
+
+    try:
+        notify_followers(record)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Notification creation failed for file %s after metadata commit", record.id)
+    return jsonify({"message": "File uploaded", "file": record.to_dict()}), 201
+
+
 @files_bp.route("/upload", methods=["POST"])
 @jwt_required()  # must be logged in
 def upload_file():
@@ -112,6 +295,15 @@ def upload_file():
     category = request.form.get("category")
     subject = request.form.get("subject")
     semester = request.form.get("semester")
+
+    file_size = file.content_length
+    if not isinstance(file_size, int) or file_size <= 0:
+        current_position = file.stream.tell()
+        file.stream.seek(0, os.SEEK_END)
+        file_size = file.stream.tell()
+        file.stream.seek(current_position)
+    if file_size > current_app.config["MAX_UPLOAD_SIZE"]:
+        return jsonify({"error": "File exceeds the maximum allowed size"}), 413
 
     if not title or not category or not subject or not semester:
         return jsonify({"error": "title, category, subject and semester are required"}), 400
@@ -153,7 +345,11 @@ def upload_file():
         db.session.add(record)
         db.session.commit()
 
-        notify_followers(record)
+        try:
+            notify_followers(record)
+        except Exception:
+            db.session.rollback()
+            logger.exception("Notification creation failed for file %s after metadata commit", record.id)
 
         return jsonify({"message": "File uploaded", "file": record.to_dict()}), 201
 
