@@ -15,6 +15,7 @@ export default function FileList({
   emptyDescription = 'No academic files have been uploaded for these filters yet.',
   showUploadAction = true,
   currentUserId = null,
+  isAdmin = false,
   onEdit = null,
   onDelete = null,
 }) {
@@ -61,6 +62,7 @@ export default function FileList({
           key={file.id}
           file={file}
           isOwner={currentUserId !== null && Number(currentUserId) === Number(file.uploader_id)}
+          isAdmin={isAdmin}
           onEdit={onEdit}
           onDelete={onDelete}
         />

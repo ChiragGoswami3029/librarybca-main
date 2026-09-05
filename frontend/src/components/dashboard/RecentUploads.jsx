@@ -82,6 +82,7 @@ export default function RecentUploads({
         emptyTitle="No recent uploads found"
         emptyDescription="Be the first to share notes or assignments for this semester!"
         currentUserId={user?.id}
+        isAdmin={Boolean(user?.is_admin)}
       />
     </section>
   );

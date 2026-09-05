@@ -15,6 +15,7 @@ import { getDownloadUrl } from '../../services/filesApi';
 export default function FileRow({
   file,
   isOwner = false,
+  isAdmin = false,
   onEdit = null,
   onDelete = null,
 }) {
@@ -263,7 +264,7 @@ export default function FileRow({
                 </button>
               )}
 
-              {isOwner && onDelete && (
+              {(isOwner || isAdmin) && onDelete && (
                 <button
                   type="button"
                   onClick={() => {

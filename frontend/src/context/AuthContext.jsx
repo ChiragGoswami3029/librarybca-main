@@ -3,6 +3,13 @@ import { loginUser, registerUser, getProfile } from '../services/authApi';
 
 const AuthContext = createContext();
 
+function normalizeProfile(profileData) {
+  return {
+    ...profileData,
+    is_admin: Boolean(profileData?.is_admin),
+  };
+}
+
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => localStorage.getItem('academicshare_token'));
   const [user, setUser] = useState(() => {
@@ -40,8 +47,9 @@ export function AuthProvider({ children }) {
     try {
       const profileData = await getProfile();
       if (profileData) {
-        setUser(profileData);
-        localStorage.setItem('academicshare_user', JSON.stringify(profileData));
+        const normalizedProfile = normalizeProfile(profileData);
+        setUser(normalizedProfile);
+        localStorage.setItem('academicshare_user', JSON.stringify(normalizedProfile));
       }
     } catch (err) {
       if (err.status === 401) {
@@ -82,8 +90,9 @@ export function AuthProvider({ children }) {
       try {
         const prof = await getProfile();
         if (prof) {
-          setUser(prof);
-          localStorage.setItem('academicshare_user', JSON.stringify(prof));
+          const normalizedProfile = normalizeProfile(prof);
+          setUser(normalizedProfile);
+          localStorage.setItem('academicshare_user', JSON.stringify(normalizedProfile));
         }
       } catch {
         // Fallback with name from login

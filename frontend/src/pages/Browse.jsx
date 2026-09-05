@@ -325,6 +325,7 @@ export default function Browse() {
           emptyTitle="No matching resources"
           emptyDescription="Try clearing some filters or searching for a different term."
           currentUserId={user?.id}
+          isAdmin={Boolean(user?.is_admin)}
         />
       </div>
     </div>

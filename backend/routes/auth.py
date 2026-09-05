@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from models import db, User
 
@@ -49,4 +49,5 @@ def get_profile():
         "name": user.name,
         "email": user.email,
         "created_at": user.created_at.isoformat(),
+        "is_admin": user.id in current_app.config["ADMIN_USER_IDS"],
     }), 200
