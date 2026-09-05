@@ -1,14 +1,16 @@
 import os
 import uuid
+import logging
 import cloudinary
 import cloudinary.uploader
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
 from flask import Blueprint, request, jsonify, send_from_directory, current_app, redirect
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.utils import secure_filename
 from models import db, FileItem, Notification, Follow
 
 files_bp = Blueprint("files", __name__)
+logger = logging.getLogger(__name__)
 
 
 def allowed_file(filename):
@@ -16,11 +18,11 @@ def allowed_file(filename):
     return ext in current_app.config["ALLOWED_EXTENSIONS"]
 
 
-def cloudinary_delivery_url(record):
+def cloudinary_delivery_url(record) -> str:
     """Return a delivery URL with the resource type used for this file."""
     url = record.filename
-    if not url.startswith("http"):
-        return url
+    if not isinstance(url, str) or not url.startswith("http"):
+        return url if isinstance(url, str) else ""
 
     ext = os.path.splitext(record.original_name or "")[1].lower()
     if ext not in {".pdf", ".doc", ".docx", ".ppt", ".pptx", ".zip", ".txt"}:
@@ -29,6 +31,57 @@ def cloudinary_delivery_url(record):
     parsed = urlsplit(url)
     path = parsed.path.replace("/image/upload/", "/raw/upload/", 1)
     return urlunsplit((parsed.scheme, parsed.netloc, path, parsed.query, parsed.fragment))
+
+
+def cloudinary_asset_details(record):
+    url = record.filename
+    if not isinstance(url, str) or not url.startswith("http"):
+        return None
+
+    parsed = urlsplit(url)
+    path_parts = parsed.path.split("/upload/", 1)
+    if len(path_parts) != 2:
+        return None
+
+    resource_type = "raw" if "/raw/" in path_parts[0] else "image"
+    public_id = path_parts[1]
+    public_id_parts = public_id.split("/")
+    if public_id_parts and public_id_parts[0].startswith("v") and public_id_parts[0][1:].isdigit():
+        public_id_parts.pop(0)
+
+    return unquote("/".join(public_id_parts)), resource_type
+
+
+def delete_cloudinary_asset(record):
+    asset_details = cloudinary_asset_details(record)
+    if not asset_details:
+        return
+
+    public_id, resource_type = asset_details
+    resource_types = [resource_type]
+    if resource_type == "image" and os.path.splitext(record.original_name or "")[1].lower() in {
+        ".pdf", ".doc", ".docx", ".ppt", ".pptx", ".zip", ".txt"
+    }:
+        resource_types.append("raw")
+
+    for asset_resource_type in resource_types:
+        try:
+            result = cloudinary.uploader.destroy(public_id, resource_type=asset_resource_type)
+            if result.get("result") == "ok":
+                return
+            logger.warning(
+                "Cloudinary deletion returned %s for file %s using resource type %s",
+                result.get("result"),
+                record.id,
+                asset_resource_type,
+            )
+        except Exception:
+            logger.warning(
+                "Cloudinary deletion failed for file %s using resource type %s",
+                record.id,
+                asset_resource_type,
+                exc_info=True,
+            )
 
 
 def notify_followers(file_record):
@@ -219,12 +272,17 @@ def delete_file(file_id):
     if record.uploader_id != user_id:
         return jsonify({"error": "You can only delete your own uploads"}), 403
 
-    # Purani local files agar hain toh hi os.remove() chalega
-    if not record.filename.startswith("http"):
+    if isinstance(record.filename, str) and record.filename.startswith("http"):
+        delete_cloudinary_asset(record)
+    elif isinstance(record.filename, str):
         file_path = os.path.join(current_app.config["UPLOAD_FOLDER"], record.filename)
         if os.path.exists(file_path):
-            os.remove(file_path)
+            try:
+                os.remove(file_path)
+            except OSError:
+                logger.warning("Local file deletion failed for file %s", record.id, exc_info=True)
 
+    Notification.query.filter_by(file_id=record.id).delete(synchronize_session=False)
     db.session.delete(record)
     db.session.commit()
     return jsonify({"message": "File deleted"}), 200
