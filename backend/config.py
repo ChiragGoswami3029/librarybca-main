@@ -22,6 +22,11 @@ class Config:
 
     # Secret key used to sign login tokens (JWT).
     JWT_SECRET_KEY = os.environ["JWT_SECRET_KEY"]
+    ADMIN_USER_IDS = {
+        int(user_id.strip())
+        for user_id in os.environ.get("ADMIN_USER_IDS", "").split(",")
+        if user_id.strip().isdigit()
+    }
 
     JWT_ACCESS_TOKEN_EXPIRES = False # stay logged in until you log out
 

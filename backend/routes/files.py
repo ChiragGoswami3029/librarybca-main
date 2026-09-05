@@ -269,7 +269,8 @@ def delete_file(file_id):
     user_id = int(get_jwt_identity())
     record = FileItem.query.get_or_404(file_id)
 
-    if record.uploader_id != user_id:
+    is_admin = user_id in current_app.config["ADMIN_USER_IDS"]
+    if record.uploader_id != user_id and not is_admin:
         return jsonify({"error": "You can only delete your own uploads"}), 403
 
     if isinstance(record.filename, str) and record.filename.startswith("http"):
