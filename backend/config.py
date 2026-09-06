@@ -35,10 +35,10 @@ class Config:
 
     # Backblaze B2 S3-compatible storage settings. These are only foundation
     # settings for now; existing file routes continue to use Cloudinary.
-    B2_APPLICATION_KEY_ID = os.environ.get("B2_APPLICATION_KEY_ID")
-    B2_APPLICATION_KEY = os.environ.get("B2_APPLICATION_KEY")
-    B2_BUCKET_NAME = os.environ.get("B2_BUCKET_NAME")
-    B2_ENDPOINT = os.environ.get("B2_ENDPOINT")
+    B2_APPLICATION_KEY_ID = (os.environ.get("B2_APPLICATION_KEY_ID") or "").strip() or None
+    B2_APPLICATION_KEY = (os.environ.get("B2_APPLICATION_KEY") or "").strip() or None
+    B2_BUCKET_NAME = (os.environ.get("B2_BUCKET_NAME") or "").strip() or None
+    B2_ENDPOINT = (os.environ.get("B2_ENDPOINT") or "").strip() or None
 
     # Only these file types can be uploaded (safety)
     ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "ppt", "pptx", "png", "jpg", "jpeg", "zip", "txt"}

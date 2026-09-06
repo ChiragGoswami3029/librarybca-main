@@ -34,10 +34,10 @@ class B2Storage:
     @classmethod
     def from_config(cls, config) -> "B2Storage":
         values = {
-            "application_key_id": config.get("B2_APPLICATION_KEY_ID"),
-            "application_key": config.get("B2_APPLICATION_KEY"),
-            "bucket_name": config.get("B2_BUCKET_NAME"),
-            "endpoint": config.get("B2_ENDPOINT"),
+            "application_key_id": (config.get("B2_APPLICATION_KEY_ID") or "").strip(),
+            "application_key": (config.get("B2_APPLICATION_KEY") or "").strip(),
+            "bucket_name": (config.get("B2_BUCKET_NAME") or "").strip(),
+            "endpoint": (config.get("B2_ENDPOINT") or "").strip(),
         }
         missing = [name for name, value in values.items() if not value]
         if missing:
@@ -52,6 +52,7 @@ class B2Storage:
         return self._client
 
     def create_presigned_put_url(self, object_key: str, content_type: str) -> str:
+        object_key = object_key.strip()
         return self.client.generate_presigned_url(
             "put_object",
             Params={
@@ -64,13 +65,14 @@ class B2Storage:
         )
 
     def head_object(self, object_key: str):
-        return self.client.head_object(Bucket=self.bucket_name, Key=object_key)
+        return self.client.head_object(Bucket=self.bucket_name, Key=object_key.strip())
 
     def delete_object(self, object_key: str) -> None:
-        self.client.delete_object(Bucket=self.bucket_name, Key=object_key)
+        self.client.delete_object(Bucket=self.bucket_name, Key=object_key.strip())
 
     @staticmethod
     def _validate_endpoint(endpoint: str) -> str:
+        endpoint = endpoint.strip()
         parsed = urlparse(endpoint)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValueError("B2_ENDPOINT must be a valid HTTP(S) URL")
