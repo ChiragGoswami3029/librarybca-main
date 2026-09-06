@@ -34,10 +34,10 @@ class B2Storage:
     @classmethod
     def from_config(cls, config) -> "B2Storage":
         values = {
-            "application_key_id": config.B2_APPLICATION_KEY_ID,
-            "application_key": config.B2_APPLICATION_KEY,
-            "bucket_name": config.B2_BUCKET_NAME,
-            "endpoint": config.B2_ENDPOINT,
+            "application_key_id": config.get("B2_APPLICATION_KEY_ID"),
+            "application_key": config.get("B2_APPLICATION_KEY"),
+            "bucket_name": config.get("B2_BUCKET_NAME"),
+            "endpoint": config.get("B2_ENDPOINT"),
         }
         missing = [name for name, value in values.items() if not value]
         if missing:
