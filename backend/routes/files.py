@@ -5,9 +5,10 @@ import time
 import cloudinary
 import cloudinary.uploader
 import cloudinary.utils
+import requests
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from urllib.parse import unquote, urlsplit, urlunsplit
-from flask import Blueprint, request, jsonify, send_from_directory, current_app, redirect
+from flask import Blueprint, request, jsonify, send_from_directory, current_app, redirect, Response, stream_with_context
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.utils import secure_filename
 from models import db, FileItem, Notification, Follow
@@ -398,11 +399,37 @@ def list_files():
 @files_bp.route("/files/<int:file_id>/download", methods=["GET"])
 def download_file(file_id):
     record = FileItem.query.get_or_404(file_id)
-    
-    # Agar Cloudinary URL hai toh browser ko direct wahan redirect karein
+
     if record.filename.startswith("http"):
-        return redirect(cloudinary_delivery_url(record))
-        
+        try:
+            upstream = requests.get(cloudinary_delivery_url(record), stream=True, timeout=60)
+            upstream.raise_for_status()
+        except requests.RequestException:
+            if "upstream" in locals():
+                upstream.close()
+            logger.warning("Cloudinary download failed for file %s", record.id, exc_info=True)
+            return jsonify({"error": "File download failed"}), 502
+
+        download_name = os.path.basename(record.original_name or "").strip() or "download"
+
+        def generate():
+            try:
+                for chunk in upstream.iter_content(chunk_size=64 * 1024):
+                    if chunk:
+                        yield chunk
+            finally:
+                upstream.close()
+
+        response = Response(
+            stream_with_context(generate()),
+            status=200,
+            content_type=upstream.headers.get("Content-Type", "application/octet-stream"),
+        )
+        response.headers.set("Content-Disposition", "attachment", filename=download_name)
+        if upstream.headers.get("Content-Length"):
+            response.headers["Content-Length"] = upstream.headers["Content-Length"]
+        return response
+
     return send_from_directory(
         current_app.config["UPLOAD_FOLDER"],
         record.filename,
