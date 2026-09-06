@@ -6,6 +6,7 @@ import cloudinary
 import cloudinary.uploader
 import cloudinary.utils
 import requests
+from botocore.exceptions import ClientError
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from urllib.parse import unquote, urlsplit, urlunsplit
 from flask import Blueprint, request, jsonify, send_from_directory, current_app, redirect, Response, stream_with_context
@@ -20,6 +21,16 @@ RAW_EXTENSIONS = {".pdf", ".doc", ".docx", ".ppt", ".pptx", ".zip", ".txt"}
 
 def upload_token_serializer():
     return URLSafeTimedSerializer(current_app.config["JWT_SECRET_KEY"], salt="cloudinary-upload")
+
+
+def b2_upload_token_serializer():
+    return URLSafeTimedSerializer(current_app.config["JWT_SECRET_KEY"], salt="b2-upload")
+
+
+def b2_storage():
+    from storage.b2 import B2Storage
+
+    return B2Storage.from_config(current_app.config)
 
 
 def cloudinary_upload_url(resource_type):
@@ -274,6 +285,133 @@ def finalize_direct_upload():
         db.session.rollback()
         cleanup_cloudinary_upload(public_id, resource_type)
         return jsonify({"error": "Unable to save uploaded file metadata"}), 500
+
+    try:
+        notify_followers(record)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Notification creation failed for file %s after metadata commit", record.id)
+    return jsonify({"message": "File uploaded", "file": record.to_dict()}), 201
+
+
+@files_bp.route("/upload/b2/signature", methods=["POST"])
+@jwt_required()
+def create_b2_upload_signature():
+    data = request.get_json(silent=True) or {}
+    original_name = secure_filename((data.get("filename") or "").strip())
+    file_size = data.get("size")
+    content_type = (data.get("content_type") or "application/octet-stream").strip()
+
+    if not original_name or not allowed_file(original_name):
+        return jsonify({"error": "Invalid or missing file type"}), 400
+    if not isinstance(file_size, int) or file_size <= 0:
+        return jsonify({"error": "A valid file size is required"}), 400
+    if file_size > current_app.config["MAX_UPLOAD_SIZE"]:
+        return jsonify({"error": "File exceeds the maximum allowed size"}), 413
+    if not content_type or len(content_type) > 255:
+        return jsonify({"error": "Invalid content type"}), 400
+
+    try:
+        storage = b2_storage()
+        user_id = int(get_jwt_identity())
+        extension = os.path.splitext(original_name)[1].lower()
+        object_key = f"uploads/{user_id}/{uuid.uuid4().hex}{extension}"
+        upload_token = b2_upload_token_serializer().dumps({
+            "user_id": user_id,
+            "object_key": object_key,
+            "original_name": original_name,
+            "file_size": file_size,
+            "content_type": content_type,
+        })
+        upload_url = storage.create_presigned_put_url(object_key, content_type)
+    except (RuntimeError, ValueError) as error:
+        logger.warning("B2 upload signing configuration failed", exc_info=True)
+        return jsonify({"error": str(error)}), 503
+    except Exception:
+        logger.exception("B2 upload signing failed")
+        return jsonify({"error": "Unable to prepare B2 upload"}), 503
+
+    return jsonify({
+        "upload_url": upload_url,
+        "upload_token": upload_token,
+        "object_key": object_key,
+        "content_type": content_type,
+        "expires_in": 900,
+    }), 200
+
+
+@files_bp.route("/upload/b2/metadata", methods=["POST"])
+@jwt_required()
+def finalize_b2_upload():
+    data = request.get_json(silent=True) or {}
+    user_id = int(get_jwt_identity())
+    upload_token = data.get("upload_token")
+    storage = None
+    object_key = None
+
+    try:
+        if not isinstance(upload_token, str):
+            raise BadSignature("missing upload token")
+        token_data = b2_upload_token_serializer().loads(upload_token, max_age=900)
+        object_key = token_data.get("object_key")
+        if token_data.get("user_id") != user_id:
+            return jsonify({"error": "Upload authorization does not belong to this user"}), 403
+
+        original_name = secure_filename((data.get("original_name") or "").strip())
+        title = (data.get("title") or "").strip()
+        category = data.get("category")
+        subject = (data.get("subject") or "").strip()
+        semester = data.get("semester")
+        if (
+            not isinstance(object_key, str)
+            or not object_key.startswith(f"uploads/{user_id}/")
+            or object_key.count("/") != 2
+            or object_key != token_data.get("object_key")
+        ):
+            return jsonify({"error": "Invalid B2 object key"}), 400
+        if original_name != token_data.get("original_name"):
+            return jsonify({"error": "Filename does not match upload authorization"}), 400
+        if not allowed_file(original_name):
+            return jsonify({"error": "Invalid or missing file type"}), 400
+        if not title or not category or not subject or not semester:
+            return jsonify({"error": "title, category, subject and semester are required"}), 400
+        if category not in current_app.config["CATEGORIES"]:
+            return jsonify({"error": f"category must be one of {current_app.config['CATEGORIES']}"}), 400
+
+        storage = b2_storage()
+        if FileItem.query.filter_by(filename=object_key).first():
+            return jsonify({"error": "Upload has already been finalized"}), 409
+        object_metadata = storage.head_object(object_key)
+        if object_metadata.get("ContentLength") != token_data.get("file_size"):
+            return jsonify({"error": "Uploaded file size does not match authorization"}), 400
+
+        record = FileItem(
+            title=title,
+            category=category,
+            subject=subject,
+            semester=semester,
+            filename=object_key,
+            original_name=original_name,
+            uploader_id=user_id,
+        )
+        db.session.add(record)
+        db.session.commit()
+    except (BadSignature, SignatureExpired, TypeError):
+        return jsonify({"error": "Invalid or expired upload authorization"}), 400
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
+            return jsonify({"error": "B2 object was not found"}), 400
+        logger.exception("B2 object verification failed")
+        return jsonify({"error": "Unable to verify B2 upload"}), 502
+    except Exception:
+        db.session.rollback()
+        if storage and object_key:
+            try:
+                storage.delete_object(object_key)
+            except Exception:
+                logger.exception("B2 cleanup failed for object %s", object_key)
+        logger.exception("B2 upload finalization failed")
+        return jsonify({"error": "Unable to finalize B2 upload"}), 500
 
     try:
         notify_followers(record)
