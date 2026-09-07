@@ -33,6 +33,13 @@ def b2_storage():
     return B2Storage.from_config(current_app.config)
 
 
+def is_b2_object_key(filename):
+    if not isinstance(filename, str):
+        return False
+    parts = filename.split("/")
+    return len(parts) == 3 and parts[0] == "uploads" and parts[1].isdigit() and bool(parts[2])
+
+
 def cloudinary_upload_url(resource_type):
     cloud_name = cloudinary.config().cloud_name
     return f"https://api.cloudinary.com/v1_1/{cloud_name}/{resource_type}/upload"
@@ -538,6 +545,21 @@ def list_files():
 def download_file(file_id):
     record = FileItem.query.get_or_404(file_id)
 
+    if is_b2_object_key(record.filename):
+        try:
+            storage = b2_storage()
+            storage.head_object(record.filename)
+            download_name = os.path.basename(record.original_name or "").strip() or "download"
+            return redirect(storage.create_presigned_get_url(record.filename, download_name))
+        except ClientError as error:
+            if error.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
+                return jsonify({"error": "File not found"}), 404
+            logger.exception("B2 download failed for file %s", record.id)
+            return jsonify({"error": "File download failed"}), 502
+        except Exception:
+            logger.exception("B2 download signing failed for file %s", record.id)
+            return jsonify({"error": "File download failed"}), 502
+
     if record.filename.startswith("http"):
         try:
             upstream = requests.get(cloudinary_delivery_url(record), stream=True, timeout=60)
@@ -579,6 +601,20 @@ def download_file(file_id):
 @files_bp.route("/files/<int:file_id>/view", methods=["GET"])
 def view_file(file_id):
     record = FileItem.query.get_or_404(file_id)
+
+    if is_b2_object_key(record.filename):
+        try:
+            storage = b2_storage()
+            storage.head_object(record.filename)
+            return redirect(storage.create_presigned_get_url(record.filename))
+        except ClientError as error:
+            if error.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
+                return jsonify({"error": "File not found"}), 404
+            logger.exception("B2 view failed for file %s", record.id)
+            return jsonify({"error": "File view failed"}), 502
+        except Exception:
+            logger.exception("B2 view signing failed for file %s", record.id)
+            return jsonify({"error": "File view failed"}), 502
     
     # Agar Cloudinary URL hai toh direct view link redirect karein
     if record.filename.startswith("http"):

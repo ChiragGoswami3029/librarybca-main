@@ -64,6 +64,27 @@ class B2Storage:
             HttpMethod="PUT",
         )
 
+    def create_presigned_get_url(
+        self,
+        object_key: str,
+        download_name: str | None = None,
+    ) -> str:
+        object_key = object_key.strip()
+        params = {
+            "Bucket": self.bucket_name,
+            "Key": object_key,
+        }
+        if download_name:
+            params["ResponseContentDisposition"] = (
+                f'attachment; filename="{download_name}"'
+            )
+        return self.client.generate_presigned_url(
+            "get_object",
+            Params=params,
+            ExpiresIn=900,
+            HttpMethod="GET",
+        )
+
     def head_object(self, object_key: str):
         return self.client.head_object(Bucket=self.bucket_name, Key=object_key.strip())
 

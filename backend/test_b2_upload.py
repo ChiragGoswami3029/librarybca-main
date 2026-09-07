@@ -1,7 +1,10 @@
 import os
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+import requests
+from botocore.exceptions import ClientError
 
 os.environ.setdefault("JWT_SECRET_KEY", "test-only-secret")
 os.environ.setdefault("DATABASE_URL", "sqlite:///b2_upload_test.db")
@@ -16,6 +19,7 @@ class FakeB2Storage:
     def __init__(self, size=12):
         self.size = size
         self.deleted = []
+        self.get_requests = []
 
     def create_presigned_put_url(self, object_key, content_type):
         return f"https://s3.example.test/bucket/{object_key}?signed=1"
@@ -25,6 +29,10 @@ class FakeB2Storage:
 
     def delete_object(self, object_key):
         self.deleted.append(object_key)
+
+    def create_presigned_get_url(self, object_key, download_name=None):
+        self.get_requests.append((object_key, download_name))
+        return f"https://s3.example.test/bucket/{object_key}?get=1"
 
 
 class B2UploadTests(unittest.TestCase):
@@ -146,6 +154,131 @@ class B2UploadTests(unittest.TestCase):
         self.assertEqual(storage.deleted, [signed["object_key"]])
         with self.app.app_context():
             self.assertIsNone(FileItem.query.filter_by(filename=signed["object_key"]).first())
+
+    @patch("routes.files.b2_storage")
+    def test_b2_view_returns_presigned_get_url(self, storage_factory):
+        storage = FakeB2Storage()
+        storage_factory.return_value = storage
+        with self.app.app_context():
+            record = FileItem(
+                title="B2 Notes",
+                category="Notes",
+                subject="Data Structures",
+                semester="3",
+                filename="uploads/1/notes.pdf",
+                original_name="notes.pdf",
+                uploader_id=self.user_id,
+            )
+            db.session.add(record)
+            db.session.commit()
+            file_id = record.id
+
+        response = self.client.get(f"/files/{file_id}/view")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.location, "https://s3.example.test/bucket/uploads/1/notes.pdf?get=1")
+        self.assertEqual(storage.get_requests, [("uploads/1/notes.pdf", None)])
+
+    @patch("routes.files.b2_storage")
+    def test_b2_download_returns_attachment_presigned_get_url(self, storage_factory):
+        storage = FakeB2Storage()
+        storage_factory.return_value = storage
+        with self.app.app_context():
+            record = FileItem(
+                title="B2 Notes",
+                category="Notes",
+                subject="Data Structures",
+                semester="3",
+                filename="uploads/1/notes.pdf",
+                original_name="notes.pdf",
+                uploader_id=self.user_id,
+            )
+            db.session.add(record)
+            db.session.commit()
+            file_id = record.id
+
+        response = self.client.get(f"/files/{file_id}/download")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.location, "https://s3.example.test/bucket/uploads/1/notes.pdf?get=1")
+        self.assertEqual(storage.get_requests, [("uploads/1/notes.pdf", "notes.pdf")])
+
+    @patch("routes.files.b2_storage")
+    def test_missing_b2_object_returns_not_found(self, storage_factory):
+        storage = FakeB2Storage()
+        storage.head_object = lambda object_key: (_ for _ in ()).throw(
+            ClientError(
+                {"Error": {"Code": "NoSuchKey"}},
+                "HeadObject",
+            )
+        )
+        storage_factory.return_value = storage
+        with self.app.app_context():
+            record = FileItem(
+                title="Missing B2 Notes",
+                category="Notes",
+                subject="Data Structures",
+                semester="3",
+                filename="uploads/1/missing.pdf",
+                original_name="missing.pdf",
+                uploader_id=self.user_id,
+            )
+            db.session.add(record)
+            db.session.commit()
+            file_id = record.id
+
+        response = self.client.get(f"/files/{file_id}/view")
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json, {"error": "File not found"})
+
+    def test_cloudinary_view_still_redirects(self):
+        with self.app.app_context():
+            record = FileItem(
+                title="Cloudinary Notes",
+                category="Notes",
+                subject="Data Structures",
+                semester="3",
+                filename="https://res.cloudinary.com/demo/image/upload/notes.pdf",
+                original_name="notes.pdf",
+                uploader_id=self.user_id,
+            )
+            db.session.add(record)
+            db.session.commit()
+            file_id = record.id
+
+        response = self.client.get(f"/files/{file_id}/view")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.location, "https://res.cloudinary.com/demo/raw/upload/notes.pdf")
+
+    @patch("routes.files.requests.get")
+    def test_cloudinary_download_still_streams_attachment(self, requests_get):
+        upstream = MagicMock()
+        upstream.status_code = 200
+        upstream.headers["Content-Type"] = "application/pdf"
+        upstream.headers["Content-Length"] = "4"
+        upstream.iter_content = lambda chunk_size: iter([b"test"])
+        requests_get.return_value = upstream
+        with self.app.app_context():
+            record = FileItem(
+                title="Cloudinary Notes",
+                category="Notes",
+                subject="Data Structures",
+                semester="3",
+                filename="https://res.cloudinary.com/demo/image/upload/notes.pdf",
+                original_name="notes.pdf",
+                uploader_id=self.user_id,
+            )
+            db.session.add(record)
+            db.session.commit()
+            file_id = record.id
+
+        response = self.client.get(f"/files/{file_id}/download")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["Content-Disposition"], 'attachment; filename=notes.pdf')
+        self.assertEqual(response.data, b"test")
+        requests_get.assert_called_once_with(
+            "https://res.cloudinary.com/demo/raw/upload/notes.pdf",
+            stream=True,
+            timeout=60,
+        )
 
 
 if __name__ == "__main__":
